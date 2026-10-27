@@ -10,6 +10,9 @@ from teleport_cam.paths import data_root, resource_root, extension_folder
 from teleport_cam.preferences import load_preferences, save_preferences
 from tools.build_windows import check_inventory
 
+# Packaged-build tests use the Windows profile folder on any OS, so they never touch the real macOS one.
+WINDOWS_PROFILE = patch('teleport_cam.platform_support.IS_MAC', False)
+
 
 class WindowsPackageTests(unittest.TestCase):
     def test_background_upgrade_switches_once_and_then_respects_the_choice(self):
@@ -43,7 +46,8 @@ class WindowsPackageTests(unittest.TestCase):
             copytree(Path(__file__).resolve().parents[1] / 'meet_extension', source / 'meet_extension')
             with patch.object(sys, 'frozen', True, create=True), \
                  patch.object(sys, '_MEIPASS', str(source), create=True), \
-                 patch.dict('os.environ', {'LOCALAPPDATA': str(base / 'profile')}):
+                 patch.dict('os.environ', {'LOCALAPPDATA': str(base / 'profile')}), \
+                 WINDOWS_PROFILE:
                 destination = extension_folder()
                 (destination / 'popup.js').write_text('altered')
                 extension_folder()
@@ -76,7 +80,8 @@ class WindowsPackageTests(unittest.TestCase):
             base = Path(folder)
             with patch.object(sys, 'frozen', True, create=True), \
                  patch.object(sys, '_MEIPASS', str(base / 'readonly-app'), create=True), \
-                 patch.dict('os.environ', {'LOCALAPPDATA': str(base / 'profile')}):
+                 patch.dict('os.environ', {'LOCALAPPDATA': str(base / 'profile')}), \
+                 WINDOWS_PROFILE:
                 self.assertEqual(resource_root(), base / 'readonly-app')
                 self.assertEqual(data_root(), base / 'profile' / 'ForaDeCena')
                 save_preferences({'effect': 'Portal'})
@@ -88,7 +93,8 @@ class WindowsPackageTests(unittest.TestCase):
         from teleport_cam.meet import MeetBridge
         with tempfile.TemporaryDirectory() as folder:
             with patch.object(sys, 'frozen', True, create=True), \
-                 patch.dict('os.environ', {'LOCALAPPDATA': folder}):
+                 patch.dict('os.environ', {'LOCALAPPDATA': folder}), \
+                 WINDOWS_PROFILE:
                 first = MeetBridge(port=0)
                 try:
                     token = first.token
@@ -99,6 +105,13 @@ class WindowsPackageTests(unittest.TestCase):
                     self.assertEqual(token, second.token)
                 finally:
                     second.close()
+
+    def test_packaged_mac_state_lives_in_application_support(self):
+        from teleport_cam.platform_support import user_data_base
+        with tempfile.TemporaryDirectory() as folder, \
+             patch('teleport_cam.platform_support.IS_MAC', True), \
+             patch.object(Path, 'home', return_value=Path(folder)):
+            self.assertEqual(user_data_base(), Path(folder) / 'Library' / 'Application Support')
 
     def test_source_keeps_existing_development_settings_location(self):
         with patch.object(sys, 'frozen', False, create=True):
