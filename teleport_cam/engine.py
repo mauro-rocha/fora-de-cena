@@ -14,6 +14,7 @@ from .effects import Silhouette, TeleportEffect
 from .effect_catalog import EFFECTS
 from .background import LiveBackground
 from .paths import resource_root
+from .platform_support import IS_MAC, camera_apis
 
 @dataclass(frozen=True)
 class Settings:
@@ -131,17 +132,25 @@ class Engine:
 
     def _open_capture(self) -> cv2.VideoCapture:
         # A named DirectShow index must not be reused against a different backend.
-        backends=(self.settings.camera_backend,) if self.settings.camera_backend is not None else (cv2.CAP_DSHOW,cv2.CAP_MSMF)
-        for backend in backends:
+        backends=(self.settings.camera_backend,) if self.settings.camera_backend is not None else camera_apis()
+        # macOS asks for camera permission on the first attempt and that attempt fails; retry once.
+        attempts=[backend for backend in backends for _ in range(2 if IS_MAC else 1)]
+        for attempt,backend in enumerate(attempts):
+            if attempt and IS_MAC:
+                self.stop.wait(1.5)
             capture=cv2.VideoCapture(self.settings.camera,backend)
             if capture.isOpened():
-                capture.set(cv2.CAP_PROP_FOURCC,cv2.VideoWriter_fourcc(*'MJPG'))
+                if not IS_MAC:  # AVFoundation chooses the pixel format itself.
+                    capture.set(cv2.CAP_PROP_FOURCC,cv2.VideoWriter_fourcc(*'MJPG'))
                 capture.set(cv2.CAP_PROP_FRAME_WIDTH,self.settings.width)
                 capture.set(cv2.CAP_PROP_FRAME_HEIGHT,self.settings.height)
                 capture.set(cv2.CAP_PROP_FPS,self.settings.fps)
                 capture.set(cv2.CAP_PROP_BUFFERSIZE,1)
                 return capture
             capture.release()
+        if IS_MAC:
+            raise RuntimeError('Webcam indisponível. Libere a câmera para o Terminal em Ajustes do Sistema → '
+                               'Privacidade e Segurança → Câmera, feche outros apps que a usam e tente de novo.')
         raise RuntimeError('Webcam indisponível. Atualize a lista, confira permissões e feche outras aplicações que a utilizam.')
 
     def _open_virtual(self,width:int,height:int) -> VirtualOutput | None:

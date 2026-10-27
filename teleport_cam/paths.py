@@ -13,8 +13,8 @@ def data_root() -> Path:
     # Preserve the existing development installation and its extension pairing.
     if not getattr(sys, 'frozen', False):
         return Path(__file__).resolve().parents[1]
-    local = os.environ.get('LOCALAPPDATA')
-    return (Path(local) if local else Path.home() / 'AppData' / 'Local') / 'ForaDeCena'
+    from .platform_support import user_data_base
+    return user_data_base() / 'ForaDeCena'
 
 
 def data_file(name: str) -> Path:

@@ -1,0 +1,8 @@
+# Extra dependencies only for macOS (Apple Silicon). Install together with requirements.lock.txt.
+# cv2-enumerate-cameras lists webcams on macOS through AVFoundation (PyObjC), without opening them.
+pyobjc-core==12.2.2
+pyobjc-framework-Cocoa==12.2.2
+pyobjc-framework-CoreAudio==12.2.2
+pyobjc-framework-CoreMedia==12.2.2
+pyobjc-framework-Quartz==12.2.2
+pyobjc-framework-AVFoundation==12.2.2

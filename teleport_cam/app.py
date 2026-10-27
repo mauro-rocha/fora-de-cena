@@ -3,6 +3,7 @@ from queue import Empty,Queue
 from threading import Thread
 from time import monotonic
 import os
+import subprocess
 import webbrowser
 import tkinter as tk
 from PIL import Image, ImageTk
@@ -18,6 +19,7 @@ from .effect_catalog import LABELS, DESCRIPTIONS
 from .gesture_guides import guide_for, illustration_size
 from .branding import set_process_identity, set_window_icon
 from .paths import resource_root, extension_folder
+from .platform_support import IS_MAC, UI_FONT, VIRTUAL_BACKENDS, CAMERA_PERMISSION_HINT, open_path
 
 PHASES={
     'opening':'Abrindo câmera', 'uncalibrated':'Prepare o fundo', 'calibrating':'Capturando fundo',
@@ -67,7 +69,7 @@ class App:
         self.hold=tk.StringVar(value=self.preferences.get('hold','1.0'))
         if self.hold.get() not in ('0.8','1.0','1.5','2.0'): self.hold.set('1.0')
         self.backend=tk.StringVar(value=self.preferences.get('backend','OBS Virtual Camera'))
-        if self.backend.get() not in ('Só prévia','OBS Virtual Camera','Unity Capture'): self.backend.set('OBS Virtual Camera')
+        if self.backend.get() not in VIRTUAL_BACKENDS: self.backend.set('OBS Virtual Camera')
         root.title('Fora de Cena')
         set_window_icon(root)
         root.geometry('1080x790')
@@ -75,12 +77,12 @@ class App:
         apply_theme(root)
         root.columnconfigure(0,weight=1)
         root.rowconfigure(1,weight=1)
-        font=('Segoe UI',13)
+        font=(UI_FONT,13)
         c=COLORS
         header=ctk.CTkFrame(root,fg_color='transparent')
         header.grid(row=0,column=0,sticky='ew',padx=30,pady=(22,18))
         header.columnconfigure(1,weight=1)
-        ctk.CTkLabel(header,text='Fora de Cena',font=('Segoe UI',23,'bold'),text_color=c['text']).grid(row=0,column=0,sticky='w')
+        ctk.CTkLabel(header,text='Fora de Cena',font=(UI_FONT,23,'bold'),text_color=c['text']).grid(row=0,column=0,sticky='w')
         self.state_text=tk.StringVar(value='Câmera desligada')
         ctk.CTkLabel(header,textvariable=self.state_text,font=font,text_color=c['muted']).grid(row=0,column=1,sticky='e',padx=20)
         ctk.CTkButton(header,text='Configurar',command=self.toggle_settings,width=116,height=38,corner_radius=19,
@@ -94,11 +96,11 @@ class App:
         preview_frame.columnconfigure(0,weight=1)
         preview_frame.rowconfigure(0,weight=1)
         self.preview=tk.Label(preview_frame,text='Sua câmera aparece aqui\n\nClique em Iniciar câmera para começar.',
-            font=('Segoe UI',17),fg='#c8cfdd',bg=c['preview'],anchor='center',width=1,height=1,borderwidth=0)
+            font=(UI_FONT,17),fg='#c8cfdd',bg=c['preview'],anchor='center',width=1,height=1,borderwidth=0)
         self.preview.grid(row=0,column=0,sticky='nsew',padx=14,pady=14)
         badge=ctk.CTkFrame(preview_frame,fg_color='#242b38',corner_radius=15)
         badge.place(x=18,y=18)
-        ctk.CTkLabel(badge,textvariable=self.camera,font=('Segoe UI',12),text_color='#d6dce7').pack(padx=12,pady=3)
+        ctk.CTkLabel(badge,textvariable=self.camera,font=(UI_FONT,12),text_color='#d6dce7').pack(padx=12,pady=3)
         self.step_text=tk.StringVar(value='Sua câmera só liga quando você clicar em Iniciar.')
         self.step_label=ctk.CTkLabel(self.center,textvariable=self.step_text,font=font,text_color=c['muted'],wraplength=850)
         self.step_label.grid(row=1,column=0,sticky='ew',pady=(12,2))
@@ -109,12 +111,12 @@ class App:
         self.guide_icon=ctk.CTkLabel(guide_panel,text='',width=64,height=64)
         self.guide_title=tk.StringVar()
         self.guide_instruction=tk.StringVar()
-        ctk.CTkLabel(guide_panel,textvariable=self.guide_title,font=('Segoe UI',13,'bold'),text_color=c['text'],anchor='w').grid(row=0,column=1,sticky='w')
-        self.guide_label=ctk.CTkLabel(guide_panel,textvariable=self.guide_instruction,font=('Segoe UI',12),text_color=c['muted'],anchor='w',justify='left',wraplength=680)
+        ctk.CTkLabel(guide_panel,textvariable=self.guide_title,font=(UI_FONT,13,'bold'),text_color=c['text'],anchor='w').grid(row=0,column=1,sticky='w')
+        self.guide_label=ctk.CTkLabel(guide_panel,textvariable=self.guide_instruction,font=(UI_FONT,12),text_color=c['muted'],anchor='w',justify='left',wraplength=680)
         self.guide_label.grid(row=1,column=1,sticky='ew')
         ctk.CTkButton(guide_panel,text='Como fazer',command=self.show_gesture_help,width=96,height=32,corner_radius=16,
-            fg_color=c['surface'],hover_color=c['line'],text_color=c['text'],font=('Segoe UI',12)).grid(row=0,column=2,rowspan=2,sticky='e',padx=(14,0))
-        self.hint_label=ctk.CTkLabel(self.center,textvariable=self.hint,font=('Segoe UI',12),text_color=c['muted'],height=18,wraplength=850)
+            fg_color=c['surface'],hover_color=c['line'],text_color=c['text'],font=(UI_FONT,12)).grid(row=0,column=2,rowspan=2,sticky='e',padx=(14,0))
+        self.hint_label=ctk.CTkLabel(self.center,textvariable=self.hint,font=(UI_FONT,12),text_color=c['muted'],height=18,wraplength=850)
         self.hint_label.grid(row=3,column=0,sticky='ew')
         self.progress=ctk.CTkProgressBar(self.center,height=3,corner_radius=2,fg_color=c['surface'],progress_color=c['accent'])
         self.progress.set(0)
@@ -124,13 +126,13 @@ class App:
         bar.columnconfigure(1,weight=1)
         effects=ctk.CTkFrame(bar,fg_color='transparent')
         effects.grid(row=0,column=0,sticky='w')
-        ctk.CTkLabel(effects,text='Efeito',font=('Segoe UI',12),text_color=c['muted']).pack(side='left',padx=(0,10))
+        ctk.CTkLabel(effects,text='Efeito',font=(UI_FONT,12),text_color=c['muted']).pack(side='left',padx=(0,10))
         effect_combo=ctk.CTkComboBox(effects,variable=self.effect,values=list(LABELS),state='readonly',command=self.change_effect,
             width=205,height=36,corner_radius=12,border_width=0,fg_color=c['panel'],button_color=c['panel'],button_hover_color=c['surface'],text_color=c['text'],font=font)
         effect_combo.pack(side='left')
         modes=ctk.CTkFrame(bar,fg_color='transparent')
         modes.grid(row=0,column=2,sticky='e')
-        ctk.CTkLabel(modes,text='Fundo',font=('Segoe UI',12),text_color=c['muted']).pack(side='left',padx=(0,10))
+        ctk.CTkLabel(modes,text='Fundo',font=(UI_FONT,12),text_color=c['muted']).pack(side='left',padx=(0,10))
         self.background_mode=tk.StringVar(value='Em movimento' if self.dynamic.get() else 'Estático')
         self.background_selector=ctk.CTkSegmentedButton(modes,values=['Estático','Em movimento'],variable=self.background_mode,
             command=self.select_background,height=36,corner_radius=12,border_width=3,fg_color=c['surface'],unselected_color=c['surface'],
@@ -140,24 +142,24 @@ class App:
         actions.grid(row=3,column=0,sticky='ew',padx=30,pady=(0,8))
         actions.columnconfigure((0,2),weight=1)
         self.primary=ctk.CTkButton(actions,text='Iniciar câmera',command=self.primary_action,state='disabled',height=48,width=252,corner_radius=24,
-            fg_color=c['accent'],hover_color=c['accent_hover'],text_color='#ffffff',font=('Segoe UI',15,'bold'))
+            fg_color=c['accent'],hover_color=c['accent_hover'],text_color='#ffffff',font=(UI_FONT,15,'bold'))
         self.primary.grid(row=0,column=1)
         ctk.CTkButton(actions,text='Restaurar · F8',command=lambda:self.command('restore'),height=36,width=126,corner_radius=18,
             fg_color='transparent',hover_color=c['surface'],text_color=c['muted'],font=font).grid(row=0,column=2,sticky='e')
         self.main_meet_notice=tk.StringVar(value='')
-        ctk.CTkLabel(root,textvariable=self.main_meet_notice,text_color=c['danger'],font=('Segoe UI',12),height=18).grid(row=4,column=0,sticky='ew')
+        ctk.CTkLabel(root,textvariable=self.main_meet_notice,text_color=c['danger'],font=(UI_FONT,12),height=18).grid(row=4,column=0,sticky='ew')
         footer=ctk.CTkFrame(root,fg_color='transparent')
         footer.grid(row=5,column=0,sticky='ew',padx=30,pady=(0,12))
         footer.columnconfigure(0,weight=1)
         self.shortcut=tk.StringVar(value='Processamento local')
-        ctk.CTkLabel(footer,textvariable=self.shortcut,font=('Segoe UI',11),text_color=c['muted']).grid(row=0,column=0,sticky='w')
+        ctk.CTkLabel(footer,textvariable=self.shortcut,font=(UI_FONT,11),text_color=c['muted']).grid(row=0,column=0,sticky='w')
         self.performance=tk.StringVar(value='Sem áudio')
-        ctk.CTkLabel(footer,textvariable=self.performance,font=('Segoe UI',11),text_color=c['muted']).grid(row=0,column=1,sticky='e')
+        ctk.CTkLabel(footer,textvariable=self.performance,font=(UI_FONT,11),text_color=c['muted']).grid(row=0,column=1,sticky='e')
         self.settings_window=ctk.CTkFrame(root,width=410,height=570,corner_radius=22,fg_color=c['panel'],border_width=1,border_color=c['line'])
         self.settings_window.pack_propagate(False)
         panel_header=ctk.CTkFrame(self.settings_window,fg_color='transparent')
         panel_header.pack(fill='x',padx=22,pady=(16,0))
-        ctk.CTkLabel(panel_header,text='Configurar',font=('Segoe UI',19,'bold'),text_color=c['text']).pack(side='left')
+        ctk.CTkLabel(panel_header,text='Configurar',font=(UI_FONT,19,'bold'),text_color=c['text']).pack(side='left')
         ctk.CTkButton(panel_header,text='Fechar',width=64,height=30,corner_radius=15,fg_color=c['surface'],text_color=c['text'],hover_color=c['line'],command=self.toggle_settings).pack(side='right')
         self.tabs=ctk.CTkTabview(self.settings_window,corner_radius=16,fg_color=c['panel'],segmented_button_selected_color=c['accent'],segmented_button_selected_hover_color=c['accent_hover'])
         self.tabs.pack(fill='both',expand=True,padx=12,pady=(0,12))
@@ -190,15 +192,15 @@ class App:
             height=36,corner_radius=10,fg_color=c['surface'],hover_color=c['line'],text_color=c['text'],font=font)
         self.recalibrate.grid(row=8,column=0,sticky='ew',pady=(18,8))
         self.background_description=tk.StringVar()
-        ctk.CTkLabel(self.config,textvariable=self.background_description,wraplength=315,text_color=c['muted'],font=('Segoe UI',12),justify='left').grid(row=9,column=0,sticky='w')
+        ctk.CTkLabel(self.config,textvariable=self.background_description,wraplength=315,text_color=c['muted'],font=(UI_FONT,12),justify='left').grid(row=9,column=0,sticky='w')
         self.status=tk.StringVar(value='Nenhuma imagem está sendo capturada.')
-        self.status_label=ctk.CTkLabel(self.config,textvariable=self.status,wraplength=315,justify='left',text_color=c['muted'],font=('Segoe UI',12))
+        self.status_label=ctk.CTkLabel(self.config,textvariable=self.status,wraplength=315,justify='left',text_color=c['muted'],font=(UI_FONT,12))
         self.status_label.grid(row=10,column=0,sticky='ew',pady=(14,0))
         self.right=ctk.CTkScrollableFrame(meet_tab,fg_color='transparent')
         self.right.pack(fill='both',expand=True)
         self.right.columnconfigure(0,weight=1)
         label(self.right,'Câmera enviada à chamada',0)
-        backend_combo=combo(self.right,self.backend,['Só prévia','OBS Virtual Camera','Unity Capture'],1)
+        backend_combo=combo(self.right,self.backend,list(VIRTUAL_BACKENDS),1)
         self.output_help=tk.StringVar(value='No Meet, escolha OBS Virtual Camera. Se ainda não instalou o OBS, clique em Preparar vídeo para o Meet.')
         ctk.CTkLabel(self.right,textvariable=self.output_help,wraplength=315,
             text_color=c['muted'],font=font,justify='left').grid(row=2,column=0,sticky='w',pady=10)
@@ -209,7 +211,7 @@ class App:
         self.leave_toggle=ctk.CTkSwitch(self.right,text='Sair do Meet após desaparecer',variable=self.leave_enabled,command=self.toggle_leave,
             progress_color=c['accent'],text_color=c['text'],font=font)
         self.leave_toggle.grid(row=5,column=0,sticky='w',pady=(8,8))
-        ctk.CTkLabel(self.right,text='Opcional. Requer a extensão e fecha apenas a aba vinculada.',text_color=c['muted'],font=('Segoe UI',12),wraplength=315).grid(row=6,column=0,sticky='w')
+        ctk.CTkLabel(self.right,text='Opcional. Requer a extensão e fecha apenas a aba vinculada.',text_color=c['muted'],font=(UI_FONT,12),wraplength=315).grid(row=6,column=0,sticky='w')
         label(self.right,'Esperar antes de sair (segundos)',7)
         combo(self.right,self.leave_delay,['2','3','5'],8)
         ctk.CTkButton(self.right,text='Conectar extensão · instruções',command=self.show_meet_help,height=34,corner_radius=10,
@@ -219,7 +221,7 @@ class App:
         ctk.CTkButton(self.right,text='Copiar código de conexão',command=self.copy_meet_code,height=34,corner_radius=10,
             fg_color=c['surface'],hover_color=c['line'],text_color=c['text'],font=font).grid(row=11,column=0,sticky='ew',pady=(8,0))
         self.meet_status=tk.StringVar(value=self.bridge_error or 'Extensão não vinculada. O vídeo funciona sem ela.')
-        self.meet_label=ctk.CTkLabel(self.right,textvariable=self.meet_status,wraplength=315,text_color=c['muted'],font=('Segoe UI',12),justify='left')
+        self.meet_label=ctk.CTkLabel(self.right,textvariable=self.meet_status,wraplength=315,text_color=c['muted'],font=(UI_FONT,12),justify='left')
         self.meet_label.grid(row=12,column=0,sticky='ew',pady=(12,0))
         self.inputs=[self.camera_combo,resolution_combo,backend_combo,hold_combo]
         self.update_background_description()
@@ -284,15 +286,15 @@ class App:
         window.bind('<Escape>',lambda _event:window.destroy())
         content=ctk.CTkScrollableFrame(window,fg_color='transparent')
         content.pack(fill='both',expand=True,padx=22,pady=18)
-        ctk.CTkLabel(content,text=guide.title,font=('Segoe UI',21,'bold'),text_color=COLORS['text']).pack(anchor='w',pady=(0,16))
+        ctk.CTkLabel(content,text=guide.title,font=(UI_FONT,21,'bold'),text_color=COLORS['text']).pack(anchor='w',pady=(0,16))
         if self.guide_image is not None:
             source=self.guide_image.cget('light_image')
             large=ctk.CTkImage(light_image=source,dark_image=source,size=illustration_size(source.size,280))
             label=ctk.CTkLabel(content,text='',image=large)
             label.pack(pady=(0,14))
         for index,step in enumerate(guide.steps,1):
-            ctk.CTkLabel(content,text=f'{index}. {step}',font=('Segoe UI',14),text_color=COLORS['text'],wraplength=410,justify='left',anchor='w').pack(fill='x',pady=(0,12))
-        ctk.CTkLabel(content,text='A ativação alterna sair e voltar. O botão continua disponível; Restaurar ou F8 interrompe o efeito.',font=('Segoe UI',12),text_color=COLORS['muted'],wraplength=410,justify='left').pack(anchor='w',pady=(4,12))
+            ctk.CTkLabel(content,text=f'{index}. {step}',font=(UI_FONT,14),text_color=COLORS['text'],wraplength=410,justify='left',anchor='w').pack(fill='x',pady=(0,12))
+        ctk.CTkLabel(content,text='A ativação alterna sair e voltar. O botão continua disponível; Restaurar ou F8 interrompe o efeito.',font=(UI_FONT,12),text_color=COLORS['muted'],wraplength=410,justify='left').pack(anchor='w',pady=(4,12))
 
     def select_background(self,value:str) -> None:
         self.dynamic.set(value=='Em movimento')
@@ -323,8 +325,8 @@ class App:
               '1. No Chrome/Edge, abra Extensões, ative Modo do desenvolvedor e carregue a pasta meet_extension sem compactação.\n\n'
               '2. Copie o código de conexão no aplicativo. Na aba da reunião, abra a extensão e clique Vincular.\n\n'
               '3. Ative Sair do Meet após desaparecer. F8 cancela durante a contagem.')
-        ctk.CTkLabel(help_window,text=text,wraplength=510,justify='left',font=('Segoe UI',14),text_color=COLORS['text']).pack(padx=26,pady=26,anchor='w')
-        ctk.CTkButton(help_window,text='Abrir guia completo',command=lambda:os.startfile(str(resource_root()/'GUIA_RAPIDO.html')),
+        ctk.CTkLabel(help_window,text=text,wraplength=510,justify='left',font=(UI_FONT,14),text_color=COLORS['text']).pack(padx=26,pady=26,anchor='w')
+        ctk.CTkButton(help_window,text='Abrir guia completo',command=lambda:open_path(resource_root()/'GUIA_RAPIDO.html'),
             fg_color=COLORS['accent'],hover_color=COLORS['accent_hover'],corner_radius=12).pack(padx=26,anchor='w')
 
     def prepare_meet(self) -> None:
@@ -335,7 +337,12 @@ class App:
             self.status.set('Aguarde a busca de câmeras terminar e tente novamente.')
             return
         if not any('obs' in device.name.lower() and 'virtual' in device.name.lower() for device in self.devices):
-            self.output_help.set('Não encontrei OBS Virtual Camera. Instale o OBS pelo site oficial; depois clique em Atualizar lista na aba Câmera. Não é preciso manter o OBS aberto.')
+            if IS_MAC:
+                self.output_help.set('Não encontrei OBS Virtual Camera. Instale o OBS pelo site oficial, abra-o uma vez, clique em '
+                    'Iniciar câmera virtual e aprove a extensão de câmera em Ajustes do Sistema; depois pare a câmera virtual no OBS '
+                    'e clique em Atualizar lista na aba Câmera.')
+            else:
+                self.output_help.set('Não encontrei OBS Virtual Camera. Instale o OBS pelo site oficial; depois clique em Atualizar lista na aba Câmera. Não é preciso manter o OBS aberto.')
             self.status.set('Abrindo o download oficial do OBS. A instalação é feita por você; o app não instala drivers automaticamente.')
             webbrowser.open('https://obsproject.com/download')
             return
@@ -352,8 +359,8 @@ class App:
 
     def open_extension(self) -> None:
         try:
-            os.startfile(str(extension_folder()))
-        except OSError:
+            open_path(extension_folder())
+        except (OSError,subprocess.SubprocessError):
             self.leave_note='Não consegui preparar a pasta da extensão. Confira o acesso à sua pasta de dados e tente novamente.'
 
     def toggle_leave(self) -> None:
@@ -443,7 +450,7 @@ class App:
             self.camera.set('Nenhuma webcam encontrada')
             self.status.set(f'Não encontrei webcams. Conecte a câmera e clique Atualizar. {error}')
             self.step_text.set('Conecte sua webcam. Em Configurar → Câmera, clique em Atualizar lista.')
-            self.hint.set(error or 'Confira também a permissão de câmera nas configurações do Windows.')
+            self.hint.set(error or CAMERA_PERMISSION_HINT)
 
     def start(self) -> None:
         if self.engine is not None and self.engine.thread.is_alive():
@@ -454,7 +461,7 @@ class App:
             self.status.set('Selecione uma webcam disponível.')
             return
         width,height=(int(v.strip()) for v in self.resolution.get().split('×'))
-        backend={'OBS Virtual Camera':'obs','Unity Capture':'unitycapture','Só prévia':'off'}[self.backend.get()]
+        backend=VIRTUAL_BACKENDS[self.backend.get()]
         self.engine=Engine(Settings(camera=device.index,camera_backend=device.backend,width=width,height=height,
             hold=float(self.hold.get()),virtual=backend,effect=LABELS[self.effect.get()],dynamic_background=self.dynamic.get()))
         self.preview_revision=-1
@@ -494,7 +501,10 @@ class App:
             self.hotkey.requested.clear()
             self.command('restore')
         if self.hotkey.ready.is_set():
-            set_text(self.shortcut,'Tudo local · F8 restaura mesmo fora desta janela' if self.hotkey.registered else 'F8 só nesta janela · atalho global ocupado')
+            if self.hotkey.registered: shortcut='Tudo local · F8 restaura mesmo fora desta janela'
+            elif IS_MAC: shortcut='Tudo local · F8 (ou fn + F8) restaura com esta janela em foco'
+            else: shortcut='F8 só nesta janela · atalho global ocupado'
+            set_text(self.shortcut,shortcut)
         if self.engine is not None:
             frame,status,fps=self.engine.snapshot()
             phase=self.engine.phase

@@ -37,6 +37,12 @@ e [licenças e avisos](https://github.com/arantes-gabs/fora-de-cena/releases/dow
 Esses arquivos documentam o componente independente de saída e suas licenças;
 quem só quer usar não precisa baixar ou compilar os fontes.
 
+### macOS (Apple Silicon)
+
+Não há executável pronto para Mac. Rode pelos fontes com Python 3.14:
+`./instalar_macos.sh` e depois `./iniciar_macos.command`.
+Veja o **[guia do macOS](MACOS.md)** para os requisitos, a permissão de câmera e o OBS.
+
 ## Preparar uma vez para chamadas
 
 Instale o **[OBS Studio pelo site oficial](https://obsproject.com/download)** para

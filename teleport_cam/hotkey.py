@@ -1,19 +1,27 @@
 from __future__ import annotations
 from threading import Event,Thread
-import ctypes
-from ctypes import wintypes
+import sys
+
 
 class RestoreHotkey:
-    """Own a Win32 message queue. The UI polls requests; no Tk calls from this thread."""
+    """Global F8. On Windows a Win32 message queue is owned by a worker thread; the UI polls requests
+    and no Tk calls happen from this thread. On other systems no global hotkey is registered
+    (macOS would need Accessibility permission); F8 keeps working inside the app windows."""
     def __init__(self) -> None:
         self.requested=Event()
         self.stop=Event()
         self.registered=False
         self.ready=Event()
+        if sys.platform!='win32':
+            self.thread=None
+            self.ready.set()
+            return
         self.thread=Thread(target=self._listen,daemon=True,name='restore-hotkey')
         self.thread.start()
 
     def _listen(self) -> None:
+        import ctypes
+        from ctypes import wintypes
         user32=ctypes.WinDLL('user32',use_last_error=True)
         user32.RegisterHotKey.argtypes=[wintypes.HWND,ctypes.c_int,wintypes.UINT,wintypes.UINT]
         user32.RegisterHotKey.restype=wintypes.BOOL
@@ -34,4 +42,5 @@ class RestoreHotkey:
 
     def close(self) -> None:
         self.stop.set()
-        self.thread.join(timeout=0.5)
+        if self.thread is not None:
+            self.thread.join(timeout=0.5)

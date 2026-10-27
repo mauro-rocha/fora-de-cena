@@ -30,7 +30,7 @@ def self_test() -> dict[str, object]:
     for name in {guide.image for guide in GUIDES.values()}:
         with Image.open(root / 'assets' / 'gestures' / name) as image:
             image.verify()
-    with Image.open(root / 'assets' / 'brand' / 'app-icon.ico') as icon:
+    with Image.open(root / 'assets' / 'brand' / ('app-icon.ico' if sys.platform == 'win32' else 'app-icon.png')) as icon:
         icon.verify()
     for name in ('GUIA_RAPIDO.html', 'meet_extension/manifest.json', 'LICENSE'):
         if not (root / name).is_file():
@@ -104,4 +104,7 @@ def main() -> int:
                 'Não foi possível abrir o Fora de Cena. Reinstale o aplicativo. '
                 'Detalhes técnicos ficam em %LOCALAPPDATA%\\ForaDeCena\\startup-error.log.',
                 'Fora de Cena', 0x10)
+        else:
+            print('Não foi possível abrir o Fora de Cena. Detalhes em', data_file('startup-error.log'), file=sys.stderr)
+            traceback.print_exc()
         return 1
